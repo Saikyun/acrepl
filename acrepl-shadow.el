@@ -86,7 +86,7 @@ Only handle FILE-BUFFER's reconnection though."
                               (string-equal host "::1"))
                         (acrepl-connect conn)))))))))))))
 
-(defun acrepl-shadow-connect ()
+(defun acrepl-shadow-connect (&optional callback)
   "Start acrepl for a file in a shadow-cljs project."
   (interactive)
   (when (not (buffer-file-name)) ; XXX: loose
@@ -126,8 +126,105 @@ Only handle FILE-BUFFER's reconnection though."
               (acrepl-mode)
               (pop-to-buffer (current-buffer))
               (goto-char (point-max))
-              (pop-to-buffer file-buffer))))))))
-  
+              (pop-to-buffer file-buffer)
+	      (when callback
+		(funcall callback)))))))))
+
+;; Saikyun's additions
+(require 'acrepl-send)
+
+(defvar acrepl-shadow-cljs-in-repl nil)
+(defvar acrepl-shadow-cljs-server-buffer-name "*acrepl-shadow-cljs-server*")
+
+(defun acrepl-shadow-start-server ()
+  (interactive)
+  (if (get-buffer acrepl-shadow-cljs-server-buffer-name)
+      (message "`shadow-cljs server` is already running.")
+    (let ((default-directory (acrepl-shadow-cljs-project-p)))
+      (async-shell-command "shadow-cljs server" acrepl-shadow-cljs-server-buffer-name)
+      (message "Started `shadow-cljs server` in dir %s" default-directory))))
+
+(defun acrepl-shadow-cljs-start-repl ()
+  (interactive)
+  (progn (acrepl-send-code "(shadow/repl :app)")
+	 (setq acrepl-shadow-cljs-in-repl t)))
+
+(defun acrepl-shadow-cljs-exit-repl ()
+  (interactive)
+  (acrepl-send-code ":cljs/quit")
+  (setq acrepl-shadow-cljs-in-repl nil))
+
+(defun acrepl-shadow-cljs-stop-worker ()
+  (interactive)
+  (acrepl-send-code "(shadow.cljs.devtools.api/stop-worker :app)"))
+
+(defun acrepl-shadow-stop-and-start-worker
+    ()
+  (interactive)
+  (acrepl-shadow-cljs-exit-repl)
+  (acrepl-shadow-cljs-stop-worker)
+  (acrepl-shadow-cljs-watch-without-autobuild)
+  (acrepl-shadow-cljs-start-repl))
+
+(defun acrepl-shadow-cljs-watch-without-autobuild ()
+  (interactive)
+  (acrepl-send-code "(shadow.cljs.devtools.api/watch :app {:autobuild false})"))
+
+(defun acrepl-shadow-cljs-watch-compile ()
+  (interactive)
+  (if acrepl-shadow-cljs-in-repl
+      (progn (acrepl-shadow-cljs-exit-repl)
+	     (acrepl-send-code "(shadow.cljs.devtools.api/watch-compile! :app)")
+	     (acrepl-shadow-cljs-start-repl))
+    (acrepl-send-code "(shadow.cljs.devtools.api/watch-compile! :app)")))
+
+(defun acrepl-shadow-start-watch-and-yarn ()
+  (acrepl-shadow-cljs-watch-without-autobuild)
+  (acrepl-shadow-cljs-start-repl)
+  (async-shell-command "yarn start --web" "*yarn start --web*"))
+
+(defun acrepl-shadow-connect-yarn ()
+  (interactive)
+  (acrepl-shadow-connect 'acrepl-shadow-start-watch-and-yarn))
+
+(defun acrepl-shadow-connect-cljs-repl ()
+  (interactive)
+  (acrepl-shadow-connect (lambda ()
+				(acrepl-shadow-cljs-start-repl)
+				(acrepl-set-ns))))
+
+(defun acrepl-shadow-same-project-p (file-a-path file-b-path)
+  "Guess if FILE-A-PATH and FILE-B-PATH are of the same shadow-cljs project."
+  (let* ((shadow-a-parent
+          (file-truename (locate-dominating-file file-a-path ".shadow-cljs")))
+         (shadow-b-parent
+          (file-truename (locate-dominating-file file-b-path ".shadow-cljs"))))
+    (string-equal shadow-a-parent shadow-b-parent)))
+
+(defun acrepl-shadow-find-matching-conn ()
+  "Advice to try to arrange for use of existing connection in same project.
+Searches existing connections for a matching one and if successful,
+attempts to set it for the current code buffer.
+Use `advice-add' with `acrepl-current-conn' and :before to enable."
+  (when (not acrepl-current-conn-name)
+    (let ((conn-names (acrepl-conn-names))
+          target-conn-name)
+      (while (and conn-names
+                  (not target-conn-name))
+        (let ((conn-name (car conn-names)))
+          (setq conn-names (cdr conn-names))
+          (let* ((conn-desc (acrepl-lookup-conn conn-name))
+                 (path (alist-get :path conn-desc))
+                 (file-name (buffer-file-name)))
+            (when (acrepl-shadow-same-project-p path file-name)
+              (setq target-conn-name conn-name)))))
+      (when target-conn-name
+        (setq acrepl-current-conn-name target-conn-name)))))
+
+;; XXX: enable
+(advice-add 'acrepl-current-conn :before
+            #'acrepl-shadow-find-matching-conn)
+
 (provide 'acrepl-shadow)
 
 ;;; acrepl-shadow.el ends here

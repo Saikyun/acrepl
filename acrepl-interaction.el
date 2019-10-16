@@ -9,7 +9,9 @@
 (require 'acrepl-ascertain)
 (require 'acrepl-load)
 (require 'acrepl-send)
+(require 'acrepl-ns)
 (require 'acrepl-tap)
+(require 'acrepl-shadow)
 
 (defcustom acrepl-interaction-menu-feature-level 0
   "How featureful to make the menu.
@@ -17,7 +19,7 @@
   :type 'integer
   :group 'acrepl)
 
-(defun acrepl-interaction-keymap ()
+(defun acrepl-interaction-keymap-init ()
   "Return a keymap for acrepl-interaction-mode.
 Influenced by `acrepl-interaction-menu-feature-level`."
   (let ((map (make-sparse-keymap)))
@@ -27,6 +29,18 @@ Influenced by `acrepl-interaction-menu-feature-level`."
     (define-key map "\C-c\C-x" 'acrepl-set-current-conn)
     (define-key map "\C-c\C-y" 'acrepl)
     (define-key map "\C-c\C-z" 'acrepl-switch-to-repl)
+
+    ;; Saikyun's additions
+    (define-key map "\C-c\C-c" 'acrepl-send-defun)
+    (define-key map "\C-c\C-n" 'acrepl-set-ns)
+    (define-key map "\C-c\C-g\C-y" 'acrepl-shadow-connect)
+            (define-key map "\C-c\C-g\C-r" 'acrepl-shadow-connect-cljs-repl)
+    (define-key map "\C-c\C-g\C-c" 'acrepl-shadow-cljs-watch-compile)
+        (define-key map "\C-c\C-g\C-c" 'acrepl-shadow-cljs-watch-compile)
+(define-key map "\C-c\C-g\C-s" 'acrepl-start-shadow-cljs-server-and-connect)
+(define-key map "\C-c\C-g\C-w\C-w" 'acrepl-shadow-cljs-watch-without-autobuild)
+;; End of Saikyun's additions
+
     (if (= 0 acrepl-interaction-menu-feature-level)
         (easy-menu-define acrepl-interaction-mode-map map
           "A Clojure REPL Interaction Mode Menu"
@@ -66,15 +80,23 @@ Influenced by `acrepl-interaction-menu-feature-level`."
           ["Switch to REPL" acrepl-switch-to-repl t])))
     map))
 
+(defvar acrepl-interaction-keymap (acrepl-interaction-keymap-init))
+
 ;;;###autoload
 (define-minor-mode acrepl-interaction-mode
   "Minor mode for acrepl interaction from a Clojure buffer.
 The following keys are available in `acrepl-interaction-mode`:
 \\{acrepl-interaction-mode}"
-  nil " acrepl" (acrepl-interaction-keymap)
+  nil " acrepl" acrepl-interaction-keymap
   (let ((existing (assq 'acrepl-interaction-mode minor-mode-map-alist)))
     (when existing
       (setcdr existing (acrepl-interaction-keymap)))))
+
+;; Saikyun's additions
+(defun acrepl-interaction-enable ()
+  (interactive)
+  (acrepl-interaction-mode 1))
+
 
 (provide 'acrepl-interaction)
 

@@ -160,6 +160,7 @@
   (setq comint-prompt-regexp acrepl-prompt-regexp)
   (setq comint-prompt-read-only t)
   (setq mode-line-process '(":%s"))
+   (setq-local comment-start ";")
   ;; XXX: can use setq-local instead?
   (set (make-local-variable 'font-lock-defaults)
        '(clojure-font-lock-keywords t)))

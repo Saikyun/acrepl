@@ -22,6 +22,10 @@ CODE-STR should be a Clojure form."
         ;; switch to acrepl buffer to prepare for appending
         (set-buffer repl-buffer)
         (goto-char (point-max))
+        ;; (comint-send-string
+        ;;  (get-buffer-process (current-buffer))
+        ;;  (format "%s" code-str))
+        (goto-char (point-max))
         (insert code-str)
         (comint-send-input)
         (set-buffer original-buffer)
@@ -34,6 +38,16 @@ CODE-STR should be a Clojure form."
   (interactive "r")
   (acrepl-send-code (buffer-substring-no-properties start end)))
 
+(defun acrepl-send-expr-at-point ()
+  "Send expression at point.
+Optional arg IGNORE-UNEVAL, if non-nil, does not send a leading uneval (#_)."
+  (interactive "P")
+  (cl-destructuring-bind (start end) (acrepl-detect-clojure-expr-bounds)
+    (when (and start end)
+      (acrepl-send-region
+       start
+       end))))
+
 (defun acrepl-send-buffer ()
   "Send buffer content."
   (interactive)
@@ -45,6 +59,16 @@ CODE-STR should be a Clojure form."
   (cl-destructuring-bind (start end) (acrepl-detect-clojure-expr-bounds)
     (when (and start end)
       (acrepl-send-region start end))))
+
+;; Saikyun's additions
+(defun acrepl-send-defun ()
+  "Figure out top-level expression and send it to evaluation."
+  (interactive)
+  (save-excursion
+    (end-of-defun)
+    (let ((end (point)))
+      (beginning-of-defun)
+      (acrepl-send-region (point) end))))
 
 (provide 'acrepl-send)
 
