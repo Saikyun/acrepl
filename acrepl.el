@@ -63,14 +63,6 @@
 ;;    There should be a ACRepl menu containing some convenience
 ;;    commands related to sending to the repl, loading files, etc.
 ;;
-;;    How featureful this ends up being can be controlled via:
-;;
-;;      (setq acrepl-interaction-menu-feature-level 0) ; default, simple
-;;
-;;    or:
-;;
-;;      (setq acrepl-interaction-menu-feature-level 1) ; gimme moar!
-;;
 ;;    N.B. (require 'acrepl-interaction) is necessary.
 
 ;;;;; Acknowledgments
@@ -107,6 +99,7 @@
 ;;;; Requirements
 
 (require 'acrepl-connect)
+(require 'acrepl-state)
 
 (require 'clojure-mode)
 (require 'comint)
@@ -138,15 +131,18 @@
   :type 'hook
   :group 'acrepl)
 
+(defcustom acrepl-guess-repl-hook '()
+  "Functions to guess a repl-buffer when lookup fails."
+  :type 'hook
+  :group 'acrepl)
+
+(defcustom acrepl-display-last-output-hook '()
+  "Functions to invoke during `acrepl-display-last-output-wrapper'."
+  :type 'hook
+  :group 'acrepl)
+
 (defvar-local acrepl-project-types '()
   "Plist of project types for source file buffer.")
-
-;; XXX: better place for this?
-(defun acrepl-guess-repl-buffer ()
-  "Return a relevant repl buffer."
-  (let ((conn (acrepl-current-conn)))
-    (when conn
-      (alist-get :repl-buffer conn)))) ; XXX: checking?
 
 (defvar acrepl-mode-map
   (let ((map (copy-keymap comint-mode-map)))
@@ -157,58 +153,32 @@
   "Major mode for acrepl.
 \\{acrepl-mode-map}"
   :syntax-table clojure-mode-syntax-table
+  ;; with font-lock enabled, at some point the following chain of calls
+  ;; can come about:
+  ;;
+  ;;   `font-lock-fontify-region'
+  ;;   ...
+  ;;   `clojure--looking-at-non-logical-sexp'
+  ;;   `comment-normalize-vars'
+  ;;
+  ;; the last of which has certain expectations regarding some comment-*
+  ;; variables, which if not met, can make life unpleasant in the minibuffer.
+  ;; thus:
+  (setq comment-start ";")
+  (setq comment-end "")
   (setq comint-prompt-regexp acrepl-prompt-regexp)
   (setq comint-prompt-read-only t)
   (setq mode-line-process '(":%s"))
-   (setq-local comment-start ";")
+  ;; XXX: any way to remove hook when no longer needed?
+  ;; XXX: does use of local arg (see `add-hook' doc) seem useful?
+  (add-hook 'kill-buffer-hook
+            #'acrepl-prune-stale-conn-info
+            nil 'local)
   ;; XXX: can use setq-local instead?
   (set (make-local-variable 'font-lock-defaults)
-       '(clojure-font-lock-keywords t)))
-
-;; XXX: better place for this?
-(defun acrepl-switch-to-repl ()
-  "Try to switch to a relevant repl buffer."
-  (interactive)
-  (let ((repl-buffer (acrepl-guess-repl-buffer)))
-    (if (not repl-buffer)
-        (error "Did not find repl buffer.  May be no connection?")
-      (pop-to-buffer repl-buffer))))
-
-;;;###autoload
-(defun acrepl-plain-connect (endpoint)
-  "Start acrepl.
-Query user for ENDPOINT which specifies the Clojure socket REPL
-endpoint.  ENDPOINT is a string of the form: \"hostname:port\"."
-  (interactive
-   (if (not (buffer-file-name)) ; XXX: loose
-       (user-error "Please invoke when visiting a Clojure file")
-    (let ((endpoint acrepl-default-endpoint))
-      (list
-        (read-string (format "REPL endpoint (default '%s'): " endpoint)
-          endpoint nil endpoint)))))
-  (let* ((ep (split-string endpoint ":"))
-         (host (car ep))
-         (port (string-to-number (cadr ep)))
-         (file-buffer (current-buffer))
-         (file-path (buffer-file-name))
-         (repl-buffer (get-buffer-create
-                       (acrepl-make-repl-buffer-name file-path port)))
-         (repl-buffer-name (buffer-name repl-buffer))
-         (conn-name repl-buffer-name)
-         (conn-desc
-          (acrepl-make-conn-desc conn-name host port file-path
-                                 (format-time-string "%Y-%m-%d_%H:%M:%S")
-                                 repl-buffer)))
-    (setq acrepl-current-conn-name conn-name)
-    (with-current-buffer repl-buffer
-      (let ((res-buffer (acrepl-connect conn-desc)))
-        (if (not res-buffer)
-            (error "Failed to start acrepl")
-          (acrepl-remember-conn conn-name conn-desc)
-          (acrepl-mode)
-          (pop-to-buffer (current-buffer))
-          (goto-char (point-max))
-          (pop-to-buffer file-buffer))))))
+       '(clojure-font-lock-keywords t))
+  ;; XXX: provide a mode-specific hook?
+  )
 
 ;;;###autoload
 (defun acrepl ()

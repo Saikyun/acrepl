@@ -17,6 +17,16 @@
 ;;
 ;;    (add-hook 'acrepl-project-type-hook
 ;;              'acrepl-shadow-cljs-type-p)
+;;
+;;  For single connection per project behavior, try:
+;;
+;;    (add-hook 'acrepl-guess-repl-hook
+;;              'acrepl-shadow-reuse-same-project-repl)
+;;
+;;  To disable if already enabled, try:
+;;
+;;    (remove-hook 'acrepl-guess-repl-hook
+;;                 'acrepl-shadow-reuse-same-project-repl)
 
 ;;; Code:
 
@@ -30,6 +40,15 @@
 
 (defvar acrepl-shadow-auto-reconnect nil
   "Attempt reconnection if shadow-cljs restarts.")
+
+(defun acrepl-shadow-cljs-dir (code-path)
+  "Determine shadow-cljs directory for CODE-PATH."
+  (file-truename (locate-dominating-file code-path "shadow-cljs.edn")))
+
+(defun acrepl-shadow-cljs-dir (code-path)
+  "Determine shadow-cljs directory for CODE-PATH."
+  (when-let ((guess-path (locate-dominating-file code-path "shadow-cljs.edn")))
+    (file-truename guess-path)))
 
 (defun acrepl-shadow-cljs-project-p ()
   "Determine whether some containing directory is a shadow-cljs project."
@@ -54,10 +73,10 @@ One use would be via `add-hook' with `acrepl-project-type-hook'."
       (when (file-exists-p dot-shadow-cljs-dir)
         dot-shadow-cljs-dir))))
 
-(defun acrepl-shadow-auto-reconnect-setup (dot-dir file-buffer)
+(defun acrepl-shadow-auto-reconnect-setup (dot-dir conn-name)
   "Arrange for auto-reconnect on shadow-cljs restart.
 Monitor DOT-DIR for appropriate changes to trigger reconnection.
-Only handle FILE-BUFFER's reconnection though."
+Only handle CONN-NAME's reconnection though."
   (let ((port-file (concat dot-dir
                      "/socket-repl.port")))
     (when (not (file-exists-p port-file))
@@ -67,24 +86,14 @@ Only handle FILE-BUFFER's reconnection though."
         ;; actions: created, changed, deleted, stopped
         (let ((action (nth 1 event))
               (file (nth 2 event)))
-          (if (and (string-equal (expand-file-name file)
-                     (expand-file-name port-file))
-                (equal action 'changed))
+          (when (and (string-equal (file-truename (expand-file-name file))
+                                   (file-truename (expand-file-name port-file)))
+                     (equal action 'changed))
             (let ((port (acrepl-number-from-file file)))
               (when (not (> port 0))
                 (error "Unexpected socket repl file content"))
-              (when (not (buffer-live-p file-buffer))
-                (error "Missing buffer for: %s" file-buffer))
-              (with-current-buffer file-buffer
-                (when-let ((conn-name acrepl-current-conn-name))
-                  (when-let ((conn (acrepl-lookup-conn conn-name)))
-                    (let ((host (alist-get :host conn))
-                          (port (alist-get :port conn)))
-                      ;; XXX: may need more tweaking
-                      (when (or (string-equal host "localhost")
-                              (string-equal host "127.0.0.1")
-                              (string-equal host "::1"))
-                        (acrepl-connect conn)))))))))))))
+              (when-let ((repl-buffer (get-buffer conn-name))) ; XXX: wrap?
+                (acrepl-connect conn-name)))))))))
 
 (defun acrepl-shadow-connect (&optional callback)
   "Start acrepl for a file in a shadow-cljs project."
@@ -107,28 +116,29 @@ Only handle FILE-BUFFER's reconnection though."
                (repl-buffer (get-buffer-create
                               (acrepl-make-repl-buffer-name file-path port)))
                (repl-buffer-name (buffer-name repl-buffer))
-               (conn-name repl-buffer-name)
-               (conn-desc
-                 (acrepl-make-conn-desc conn-name host port file-path
-                   (format-time-string "%Y-%m-%d_%H:%M:%S")
-                   repl-buffer)))
-          (setq acrepl-current-conn-name conn-name)
+               (conn-name repl-buffer-name))
+          ;; need this before acrepl-connect can work
+          (acrepl-set-endpoint! conn-name host port)
           (with-current-buffer repl-buffer
-            (let ((res-buffer (acrepl-connect conn-desc)))
-              (when (not res-buffer)
-                (error "Failed to start acrepl"))
+            (let ((res-buffer (acrepl-connect conn-name)))
+              (if (not res-buffer)
+                  (progn
+                    (acrepl-remove-endpoint! conn-name) ; XXX: failed, remove?
+                    (error "Failed to start acrepl"))
               (when acrepl-shadow-auto-reconnect
                 ;; XXX: if nil, indicate to user not successful?
                 (when (not (acrepl-shadow-auto-reconnect-setup dot-dir
-                             file-buffer))
+                             conn-name))
                   (message "Warning: failed to setup auto-reconnect.")))
-              (acrepl-remember-conn conn-name conn-desc)
+              (acrepl-update-conn-path! conn-name file-path)
               (acrepl-mode)
               (pop-to-buffer (current-buffer))
               (goto-char (point-max))
-              (pop-to-buffer file-buffer)
+	      (pop-to-buffer file-buffer)
+;;	  (set-process-filter (get-buffer-process res-buffer) 'acrepl-net-filter)
+
 	      (when callback
-		(funcall callback)))))))))
+		(funcall callback))))))))))
 
 ;; Saikyun's additions
 (require 'acrepl-send)
@@ -201,29 +211,61 @@ Only handle FILE-BUFFER's reconnection though."
           (file-truename (locate-dominating-file file-b-path ".shadow-cljs"))))
     (string-equal shadow-a-parent shadow-b-parent)))
 
-(defun acrepl-shadow-find-matching-conn ()
-  "Advice to try to arrange for use of existing connection in same project.
+(defun acrepl-shadow-conns-for-project ()
+  "Try to find all conns for current shadow-cljs project."
+  (let ((code-path (buffer-file-name)))
+    (when-let ((sc-dir (acrepl-shadow-cljs-dir code-path)))
+      ;; XXX: somehow put appropriate bits in acrepl-state.el
+      (let ((path-to-conn (acrepl-get-path-to-conn))
+            matching-conns)
+        ;; collect conns for any files in same shadow-cljs project
+        (maphash (lambda (path conn)
+                   (let ((a-sc-dir (acrepl-shadow-cljs-dir path)))
+                     (when (string-equal sc-dir a-sc-dir)
+                       (push conn matching-conns))))
+                 path-to-conn)
+        matching-conns))))
+
+(defun acrepl-shadow-reuse-same-project-repl ()
+  "Try to find an existing connection in same project.
 Searches existing connections for a matching one and if successful,
 attempts to set it for the current code buffer.
-Use `advice-add' with `acrepl-current-conn' and :before to enable."
-  (when (not acrepl-current-conn-name)
-    (let ((conn-names (acrepl-conn-names))
-          target-conn-name)
-      (while (and conn-names
-                  (not target-conn-name))
-        (let ((conn-name (car conn-names)))
-          (setq conn-names (cdr conn-names))
-          (let* ((conn-desc (acrepl-lookup-conn conn-name))
-                 (path (alist-get :path conn-desc))
-                 (file-name (buffer-file-name)))
-            (when (acrepl-shadow-same-project-p path file-name)
-              (setq target-conn-name conn-name)))))
-      (when target-conn-name
-        (setq acrepl-current-conn-name target-conn-name)))))
+Enable use via `add-hook' and `acrepl-guess-repl-hook'."
+  (let ((code-path (buffer-file-name)))
+    (when-let ((sc-dir (acrepl-shadow-cljs-dir code-path)))
+      ;; XXX: somehow put appropriate bits in acrepl-state.el
+      (let ((path-to-conn (acrepl-get-path-to-conn))
+            candidates)
+        ;; collect any files in same shadow-cljs project
+        (maphash (lambda (path conn)
+                   (let ((a-sc-dir (acrepl-shadow-cljs-dir path)))
+                     (when (string-equal sc-dir a-sc-dir)
+                       (push (cons path conn) candidates))))
+                 path-to-conn)
+        ;; XXX: customize choice policy?
+        ;; for now just choose first match, if any
+        (when-let ((match (car candidates)))
+          (let ((path (car match))
+                (conn (cdr match)))
+            (acrepl-set-conn! code-path conn)
+            (acrepl-add-conn-user! conn code-path)))))))
 
 ;; XXX: enable
-(advice-add 'acrepl-current-conn :before
-            #'acrepl-shadow-find-matching-conn)
+;; (advice-add 'acrepl-current-conn :before
+;;             #'acrepl-shadow-find-matching-conn);
+
+(add-hook 'acrepl-guess-repl-hook
+'acrepl-shadow-reuse-same-project-repl)
+
+
+
+;; XXX: for testing
+;;(add-hook 'acrepl-guess-repl-hook
+;;          'acrepl-shadow-reuse-same-project-repl)
+
+;; XXX: for testing
+;;(add-hook 'acrepl-project-type-hook
+;;          'acrepl-shadow-cljs-type-p)
 
 (provide 'acrepl-shadow)
 
