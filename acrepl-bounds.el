@@ -21,6 +21,20 @@
         (goto-char here)
         (list start end)))))
 
+(defun acrepl-detect-clojure-expr-bounds ()
+  "Return the bounds of the Clojure sexp at point."
+  (let ((here (point))
+        (right-of-delim-p (looking-back "[)}]][[:blank:]]*" nil)))
+    (backward-sexp)
+    (let ((start (if (and right-of-delim-p
+                          (looking-back "\\(#[^#)]*\\)" nil))
+                     (match-beginning 1)
+                     (point))))
+      (forward-sexp)
+      (let ((end (point)))
+        (goto-char here)
+        (list start end)))))
+
 ;; XXX: consider regular expression matching...
 ;; XXX: factoring bits lead to problems, hence this is verbose atm
 (defun acrepl-expr-bounds (targets)

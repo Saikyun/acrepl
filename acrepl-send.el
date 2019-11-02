@@ -29,10 +29,37 @@ CODE-STR should be a Clojure form."
         (goto-char (point-max))
         (insert code-str)
         (comint-send-input)
-        (set-buffer original-buffer)
+	(set-buffer original-buffer)
         (if (eq original-buffer repl-buffer)
             (goto-char (point-max))
           (goto-char here))))))
+
+(defvar acrepl-listeners (make-hash-table :test 'equal))
+
+(defun acrepl-send-code-with-callback (code-str callback)
+  "Send CODE-STR.
+CODE-STR should be a Clojure form."
+  (let ((repl-buffer (acrepl-guess-repl-buffer)))
+    (if (not repl-buffer)
+        (error "Did not find repl buffer.  May be no connection?")
+      (let ((here (point))
+            (original-buffer (current-buffer)))
+        ;; switch to acrepl buffer to prepare for appending
+        (set-buffer repl-buffer)
+        (goto-char (point-max))
+        ;; (comint-send-string
+        ;;  (get-buffer-process (current-buffer))
+        ;;  (format "%s" code-str))
+        (goto-char (point-max))
+	(let ((id (symbol-name (cl-gensym "acrepl-eval"))))
+	  (puthash id (list original-buffer callback) acrepl-listeners)
+	  (insert (format "(try {:tag :ret :id \"%s\" :result (pr-str (do %s))} (catch js/Error e {:id \"%s\" :error (pr-str e)}))" id code-str id)))
+        (comint-send-input)
+	(set-buffer original-buffer)
+        (if (eq original-buffer repl-buffer)
+            (goto-char (point-max))
+          (goto-char here))))))
+
 
 (defun acrepl-send-region (start end)
   "Send a region bounded by START and END."
