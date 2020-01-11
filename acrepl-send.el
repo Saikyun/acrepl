@@ -29,10 +29,19 @@ CODE-STR should be a Clojure form."
         (goto-char (point-max))
         (insert code-str)
         (comint-send-input)
-	(set-buffer original-buffer)
+        (set-buffer original-buffer)
         (if (eq original-buffer repl-buffer)
             (goto-char (point-max))
           (goto-char here))))))
+
+(defun acrepl-send-hidden-code (code-str)
+  "Send CODE-STR.
+CODE-STR should be a Clojure form."
+  (interactive "sCode: ")
+  (let ((repl-buffer (acrepl-guess-repl-buffer)))
+    (if (not repl-buffer)
+        (error "Did not find repl buffer.  May be no connection?")
+      (process-send-string repl-buffer code-str))))
 
 (defvar acrepl-listeners (make-hash-table :test 'equal))
 
@@ -51,14 +60,18 @@ CODE-STR should be a Clojure form."
         ;;  (get-buffer-process (current-buffer))
         ;;  (format "%s" code-str))
         (goto-char (point-max))
-	(let ((id (symbol-name (cl-gensym "acrepl-eval"))))
-	  (puthash id (list original-buffer callback) acrepl-listeners)
-	  (insert (format "(try {:tag :ret :id \"%s\" :result (pr-str (do %s))} (catch js/Error e {:id \"%s\" :error (pr-str e)}))" id code-str id)))
-        (comint-send-input)
-	(set-buffer original-buffer)
+        (let ((id (symbol-name (cl-gensym "acrepl-eval"))))
+          (puthash id (list original-buffer callback) acrepl-listeners)
+          (process-send-string repl-buffer (format "(try {:tag :ret :id \"%s\" :result (pr-str (do %s))} (catch #?(:cljs js/Error :clj Exception) e {:id \"%s\" :error (pr-str e)}))
+" id code-str id))
+          ;;          (insert (format "(try {:tag :ret :id \"%s\" :result (pr-str (do %s))} (catch js/Error e {:id \"%s\" :error (pr-str e)}))" id code-str id))
+          )
+        (set-buffer original-buffer)
         (if (eq original-buffer repl-buffer)
             (goto-char (point-max))
           (goto-char here))))))
+
+
 
 
 (defun acrepl-send-region (start end)

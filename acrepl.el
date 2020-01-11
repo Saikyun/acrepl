@@ -100,6 +100,7 @@
 
 (require 'acrepl-connect)
 (require 'acrepl-state)
+(require 'acrepl-miracle)
 
 (require 'clojure-mode)
 (require 'comint)
