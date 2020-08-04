@@ -71,9 +71,6 @@ CODE-STR should be a Clojure form."
             (goto-char (point-max))
           (goto-char here))))))
 
-
-
-
 (defun acrepl-send-region (start end)
   "Send a region bounded by START and END."
   (interactive "r")
@@ -118,6 +115,16 @@ Optional arg IGNORE-UNEVAL, if non-nil, does not send a leading uneval (#_)."
     (let ((end (point)))
       (beginning-of-defun)
       (acrepl-send-region (point) end))))
+
+(defun acrepl-send-wrapping-sexp ()
+  "Sends the expression wrapping the point."
+  (interactive)
+  (let* ((pt (point))
+         (prev (start-of-sexp pt)))
+    (when prev
+      (let ((next (end-of-sexp prev)))
+        (when next
+          (acrepl-send-region prev next))))))
 
 (provide 'acrepl-send)
 
