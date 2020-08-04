@@ -13,6 +13,7 @@
 (require 'acrepl-send)
 (require 'acrepl-switch)
 (require 'acrepl-tap)
+(require 'acrepl-repl-util)
 
 (defvar acrepl-interaction-mode-map
   (let ((map (make-sparse-keymap)))
@@ -30,6 +31,7 @@
 
     ;; Saikyun's additions
     (define-key map "\C-c\C-c" 'acrepl-send-defun)
+    (define-key map "\C-c\C-d" 'acrepl-doc-expr-at-point)
     (define-key map "\C-c\C-n" 'acrepl-set-ns)
     (define-key map "\C-c\C-g\C-y" 'acrepl-shadow-connect)
     (define-key map "\C-c\C-g\C-r" 'acrepl-shadow-connect-cljs-repl)
