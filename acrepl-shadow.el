@@ -257,9 +257,10 @@ Only handle CONN-NAME's reconnection though."
   (interactive)
   (acrepl-send-code ":cljs/quit")
   (sit-for 0.5)
-  (acrepl-send-code "(let [active-build (first (shadow.cljs.devtools.api/active-builds))]
-                       (shadow.cljs.devtools.api/watch-compile! active-build)
-                       (shadow/repl active-build))"))
+  (acrepl-send-code "(do (in-ns 'shadow.user)
+                         (let [active-build (first (shadow.cljs.devtools.api/active-builds))]
+                         (shadow.cljs.devtools.api/watch-compile! active-build)
+                         (shadow/repl active-build)))"))
 
 (defun acrepl-shadow-start-watch-and-yarn ()
   (acrepl-shadow-cljs-watch-without-autobuild)
