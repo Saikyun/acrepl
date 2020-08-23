@@ -108,13 +108,107 @@ Optional arg IGNORE-UNEVAL, if non-nil, does not send a leading uneval (#_)."
 
 ;; Saikyun's additions
 (defun acrepl-send-defun ()
-  "Figure out top-level expression and send it to evaluation."
+  "Figure out top level expression and send it to evaluation."
   (interactive)
   (save-excursion
     (end-of-defun)
     (let ((end (point)))
       (beginning-of-defun)
       (acrepl-send-region (point) end))))
+
+(defun acrepl-find-defun-ignore-comment ()
+  "Figure out top level expression, ignoring comments."
+  (interactive)
+
+  (setq-local found nil)
+  
+  (save-excursion
+    (let ((start-point (point))
+          (min-point (save-excursion
+                       (beginning-of-defun)
+                       (point))))
+      (save-excursion
+        (condition-case nil
+            (while (and (equal found nil)
+                        (> (point) min-point))
+              (let ((current-max (point)))
+                (let* ((found-comment (save-excursion
+                                        (paredit-backward-up)
+                                        (paredit-forward-down)
+                                        (let ((start (point)))
+                                          (paredit-forward)
+                                          (let* ((new-start (point))
+                                                 (text (buffer-substring start new-start)))
+                                            (when (equal text "comment")
+                                              't))))))
+                  (if found-comment
+                      (if (= start-point current-max)
+                          (progn
+                            (paredit-backward)
+                            (setq found (buffer-substring current-max (point))))
+                        (progn (paredit-forward)
+                               (setq found (buffer-substring current-max (point)))))
+                    (paredit-backward-up)))))
+          (error nil)))
+      (if found
+          found
+        (save-excursion
+          (beginning-of-defun)
+          (let ((start (point)))
+            (end-of-defun)
+            (buffer-substring start (point))))))))
+
+(defun acrepl-find-defun-ignore-defn ()
+  "Figure out top level expression, ignoring defns."
+  (interactive)
+
+  (setq-local found nil)
+  
+  (save-excursion
+    (let ((start-point (point))
+          (min-point (save-excursion
+                       (beginning-of-defun)
+                       (point))))
+      (save-excursion
+        (condition-case nil
+            (while (and (equal found nil)
+                        (> (point) min-point))
+              (let ((current-max (point)))
+                (let* ((found-defn (save-excursion
+                                        (paredit-backward-up)
+                                        (paredit-forward-down)
+                                        (let ((start (point)))
+                                          (paredit-forward)
+                                          (let* ((new-start (point))
+                                                 (text (buffer-substring start new-start)))
+                                            (when (equal text "defn")
+                                              't))))))
+                  (if found-defn
+                      (if (= start-point current-max)
+                          (progn
+                            (paredit-backward)
+                            (setq found (buffer-substring current-max (point))))
+                        (progn (paredit-forward)
+                               (setq found (buffer-substring current-max (point)))))
+                    (paredit-backward-up)))))
+          (error nil)))
+      (if found
+          found
+        (save-excursion
+          (beginning-of-defun)
+          (let ((start (point)))
+            (end-of-defun)
+            (buffer-substring start (point))))))))
+
+(defun acrepl-send-defun-ignore-comment ()
+  "Figure out top level expression and send it to evaluation."
+  (interactive)
+  (acrepl-send-code (acrepl-find-defun-ignore-comment)))
+
+(defun acrepl-send-defun-ignore-defn ()
+  "Figure out top level expression and send it to evaluation."
+  (interactive)
+  (acrepl-send-code (acrepl-find-defun-ignore-defn)))
 
 (defun acrepl-send-wrapping-sexp ()
   "Sends the expression wrapping the point."

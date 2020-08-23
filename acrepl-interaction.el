@@ -30,8 +30,10 @@
     (define-key map "\C-c\C-t" 'acrepl-tap-expr-at-point)
 
     ;; Saikyun's additions
-    (define-key map "\C-c\C-c" 'acrepl-send-defun)
+    (define-key map "\C-c\C-c" 'acrepl-send-defun-ignore-comment)
+    (define-key map "\C-c\C-p" 'acrepl-pprint-last-result)
     (define-key map "\C-c\C-w" 'acrepl-send-wrapping-sexp)
+    (define-key map "\C-c\C-f" 'acrepl-send-defun-ignore-defn)
     (define-key map "\C-c\C-d" 'acrepl-doc-expr-at-point)
     (define-key map "\C-c\C-n" 'acrepl-set-ns)
     (define-key map "\C-c\C-g\C-y" 'acrepl-shadow-connect)

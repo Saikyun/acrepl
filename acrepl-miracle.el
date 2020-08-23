@@ -9,7 +9,7 @@
   "Looks backwards from point and tries to find `save` or `save-do` calls. Sadly it's pretty stupid and will accept any form that looks like this, regardless of wether it's correct or not."
   (interactive)
   (setq-local found nil)
-  (save-excursion
+(save-excursion
     (let ((min-point (save-excursion
                        (beginning-of-defun)
                        (point))))
@@ -180,7 +180,6 @@
 (define-key acrepl-interaction-mode-map "\C-c\C-o\C-e" 'acrepl-miracle-send-expr-at-point-current-context)
 (define-key acrepl-interaction-mode-map "\C-c\C-o\C-d" 'acrepl-display-miracle-context-in-other-window)
 (define-key acrepl-interaction-mode-map "\C-c\C-o\C-l" 'acrepl-set-miracle-save-context-latest)
-
 
 (provide 'acrepl-miracle)
 
