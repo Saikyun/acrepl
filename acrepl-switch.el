@@ -14,7 +14,7 @@
   (let* ((repl-buffer (acrepl-guess-repl-buffer)))
     (when (not repl-buffer)
       (error "Did not find repl buffer.  May be no connection?"))
-    (pop-to-buffer repl-buffer)))
+    (switch-to-buffer-other-window repl-buffer)))
 
 (provide 'acrepl-switch)
 

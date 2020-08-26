@@ -36,23 +36,23 @@
                nil)))))
 
 (defun acrepl-miracle-send-expr (expr id pos)
-  "Evaluate `EXPR` in miracle.save in miracle.save context specified by `ID` and `POS`."
+  "Evaluate `EXPR` in miracle.cljs.save in miracle.cljs.save context specified by `ID` and `POS`."
   (interactive "sMiracle save id: ")
-  (let ((to-send (format "(miracle.save/eval-in-context '(do %s) %s %s)" expr id pos)))
+  (let ((to-send (format "(miracle.cljs.save/eval-in-context '(do %s) %s %s)" expr id pos)))
     (acrepl-send-code-with-callback
      to-send
      (lambda (res)
        (acrepl-send-hidden-code res)))))
 
 (defun acrepl-miracle-send-expr-current-context (expr)
-  "Evaluate `EXPR` in miracle.save in current miracle.save context."
+  "Evaluate `EXPR` in miracle.cljs.save in current miracle.cljs.save context."
   (interactive "sMiracle save id: ")
   (if-let (id-pos (gethash (acrepl-guess-repl-buffer) acrepl-miracle-save-contexts))
       (acrepl-miracle-send-expr expr (first id-pos) (second id-pos))
     (message "No miracle context set. Run `acrepl-set-miracle-save-context` first")))
 
 (defun acrepl-miracle-send-expr-at-point (id pos)
-  "Evaluate expression at pointer in miracle.save context specified by `ID` and `POS`."
+  "Evaluate expression at pointer in miracle.cljs.save context specified by `ID` and `POS`."
   (interactive "sMiracle save id: ")
   (cl-destructuring-bind (start end) (acrepl-detect-clojure-expr-bounds)
     (when (and start end)
@@ -60,7 +60,7 @@
         (acrepl-miracle-send-expr expr id pos)))))
 
 (defun acrepl-miracle-send-expr-at-point-current-context ()
-  "Evaluate expression at pointer in the current miracle.save context."
+  "Evaluate expression at pointer in the current miracle.cljs.save context."
   (interactive)
   (cl-destructuring-bind (start end) (acrepl-detect-clojure-expr-bounds)
     (when (and start end)
@@ -68,7 +68,7 @@
         (acrepl-miracle-send-expr-current-context expr)))))
 
 (defun acrepl-miracle-send-wrapping-sexp-current-context ()
-  "Evaluate the expression wrapping the pointer in the current miracle.save context."
+  "Evaluate the expression wrapping the pointer in the current miracle.cljs.save context."
   (interactive)
   (let* ((pt (point))
          (prev (start-of-sexp pt)))
@@ -93,7 +93,7 @@
   (lexical-let ((save-id (acrepl-find-miracle-save)))
     (if save-id
         (progn (acrepl-send-code-with-callback
-                (format "(miracle.save/get-last %s)" save-id)
+                (format "(miracle.cljs.save/get-last %s)" save-id)
                 (lambda (res)
                   (message "HAHA")
                   (let* ((res (replace-regexp-in-string
@@ -111,7 +111,7 @@
     (if save-id
         (progn
           (acrepl-send-code-with-callback
-           (format "(do (require '[miracle.save]) (miracle.save/get-last-nof %s 10))" save-id)
+           (format "(do (require '[miracle.cljs.save]) (miracle.cljs.save/get-last-nof %s 10))" save-id)
            (lambda (res)
              (message "omguh")
              (let* ((parsed (edn-read res))
